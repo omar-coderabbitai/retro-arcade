@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PAC-MAN</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <!-- Username Modal -->
+  <div id="username-modal" class="modal-overlay">
+    <div class="modal">
+      <div class="modal-logo">PAC-MAN</div>
+      <p class="modal-sub">Enter your name to play</p>
+      <input id="username-input" type="text" maxlength="12" placeholder="YOUR NAME" autocomplete="off" />
+      <button id="username-submit">START GAME</button>
+    </div>
+  </div>
+
+  <!-- Main App -->
+  <div id="app" class="hidden">
+    <header>
+      <div class="header-left">
+        <span class="logo-text">PAC-MAN</span>
+      </div>
+      <div class="header-center">
+        <div class="stat-block">
+          <span class="stat-label">SCORE</span>
+          <span id="score-display" class="stat-value">0</span>
+        </div>
+        <div class="stat-block">
+          <span class="stat-label">HIGH SCORE</span>
+          <span id="high-score-display" class="stat-value">0</span>
+        </div>
+        <div class="stat-block">
+          <span class="stat-label">LEVEL</span>
+          <span id="level-display" class="stat-value">1</span>
+        </div>
+      </div>
+      <div class="header-right">
+        <div id="lives-display" class="lives"></div>
+        <button id="theme-toggle" class="icon-btn" title="Toggle theme">
+          <span id="theme-icon">☀️</span>
+        </button>
+      </div>
+    </header>
+
+    <main>
+      <div class="game-area">
+        <canvas id="game-canvas"></canvas>
+        <div id="game-overlay" class="game-overlay hidden">
+          <div id="overlay-content"></div>
+        </div>
+      </div>
+
+      <aside class="sidebar">
+        <div class="player-card">
+          <div class="player-avatar">👾</div>
+          <div class="player-name" id="current-player">PLAYER</div>
+        </div>
+
+        <div class="leaderboard-panel">
+          <h2 class="panel-title">🏆 LEADERBOARD</h2>
+          <table class="leaderboard-table">
+            <thead>
+              <tr><th>#</th><th>NAME</th><th>SCORE</th></tr>
+            </thead>
+            <tbody id="leaderboard-body"></tbody>
+          </table>
+        </div>
+
+        <div class="controls-panel">
+          <h2 class="panel-title">CONTROLS</h2>
+          <div class="control-row"><kbd>↑ ↓ ← →</kbd> Move</div>
+          <div class="control-row"><kbd>W A S D</kbd> Move</div>
+          <div class="control-row"><kbd>P</kbd> Pause</div>
+          <div class="control-row"><kbd>R</kbd> Restart</div>
+        </div>
+      </aside>
+    </main>
+  </div>
+
+  <script src="game.js"></script>
+</body>
+</html>
