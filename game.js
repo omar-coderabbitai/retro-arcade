@@ -152,10 +152,12 @@ class PacManGame {
     this.totalDots = this.countDots(this.map);
     this.dotsLeft  = this.totalDots;
 
+    // Speed must be a divisor of CELL=20 so positions stay on exact grid multiples
+    const spd = level >= 4 ? 4 : 2;
     this.pacman = {
       x: 13 * CELL, y: 23 * CELL,
       dir: { x: 0, y: 0 }, nextDir: { x: 0, y: 0 },
-      speed: 2 + (level - 1) * 0.3,
+      speed: spd,
       mouthAngle: 0.25, mouthDir: 1,
       dead: false, deathFrame: 0,
     };
@@ -173,7 +175,7 @@ class PacManGame {
   }
 
   _buildGhosts(level) {
-    const spd = 1.8 + (level - 1) * 0.3;
+    const spd = level >= 4 ? 4 : 2;
     return [
       // Blinky – starts outside, chases directly
       { x: 14*CELL, y: 11*CELL, dir:{x:0,y:-1}, color: GHOST_COLORS[0], name: GHOST_NAMES[0], mode:'scatter', modeTimer:7000, scatterTarget:{col:25,row:0}, homeX:13, homeY:11, inHouse:false, speed:spd, frightened:false, eaten:false, releaseDelay:0 },
@@ -251,21 +253,14 @@ class PacManGame {
     return this.map[row][c] === T.WALL;
   }
 
-  // Only call this when px/py are snapped to grid (multiples of CELL)
+  // px/py must be on-grid (multiples of CELL) when called
   canMoveTo(px, py, dir) {
-    const col = Math.round(px / CELL) + dir.x;
-    const row = Math.round(py / CELL) + dir.y;
-    if (row < 0 || row >= ROWS) return true; // tunnel rows
+    const col = (px / CELL) + dir.x;
+    const row = (py / CELL) + dir.y;
+    if (row < 0 || row >= ROWS) return true;
     const c = ((col % COLS) + COLS) % COLS;
     const tile = this.map[row]?.[c];
     return tile !== T.WALL && tile !== undefined;
-  }
-
-  // Snap position to nearest grid line if within threshold
-  snapAxis(v, threshold) {
-    const r = ((v % CELL) + CELL) % CELL;
-    if (r < threshold || r > CELL - threshold) return Math.round(v / CELL) * CELL;
-    return v;
   }
 
   onGrid(px, py) {
@@ -273,29 +268,22 @@ class PacManGame {
   }
 
   // ── pacman movement ──────────────────────────────────────────────────────
-  movePacman(dt) {
+  // Called once per fixed 60fps tick — no dt needed
+  movePacman() {
     const p    = this.pacman;
-    // Use integer step so positions always land on multiples of CELL
-    const step = Math.max(1, Math.round(p.speed * dt * 60 / 1000));
-    const snap = step + 1;
+    const step = p.speed; // always a divisor of CELL=20, so % CELL stays exact
 
-    // Snap to nearest grid line if close enough (handles float drift)
-    p.x = this.snapAxis(p.x, snap);
-    p.y = this.snapAxis(p.y, snap);
-
-    // On a grid intersection — try queued direction first, then current
+    // At an intersection: try the queued turn, then keep current direction
     if (this.onGrid(p.x, p.y)) {
-      if (this.canMoveTo(p.x, p.y, p.nextDir)) {
+      if ((p.nextDir.x !== 0 || p.nextDir.y !== 0) && this.canMoveTo(p.x, p.y, p.nextDir)) {
         p.dir = { ...p.nextDir };
       }
     }
 
     if (p.dir.x === 0 && p.dir.y === 0) return;
 
-    if (this.onGrid(p.x, p.y) && !this.canMoveTo(p.x, p.y, p.dir)) {
-      // Blocked — stay put
-      return;
-    }
+    // Blocked by wall at current cell — stop
+    if (this.onGrid(p.x, p.y) && !this.canMoveTo(p.x, p.y, p.dir)) return;
 
     p.x += p.dir.x * step;
     p.y += p.dir.y * step;
@@ -303,10 +291,6 @@ class PacManGame {
     // tunnel wrap
     if (p.x < 0)            p.x = (COLS - 1) * CELL;
     if (p.x >= COLS * CELL) p.x = 0;
-
-    // clamp y
-    p.x = Math.max(0, Math.min((COLS - 1) * CELL, p.x));
-    p.y = Math.max(0, Math.min((ROWS - 1) * CELL, p.y));
 
     // eat dot
     const tile = this.tileAt(p.x + CELL / 2, p.y + CELL / 2);
@@ -369,15 +353,11 @@ class PacManGame {
     }
   }
 
-  moveGhost(g, dt) {
+  moveGhost(g) {
     if (g.inHouse) return;
 
-    const rawSpd = g.eaten ? 4 : g.frightened ? g.speed * 0.5 : g.speed;
-    const step   = Math.max(1, Math.round(rawSpd * dt * 60 / 1000));
-    const snap   = step + 1;
-
-    g.x = this.snapAxis(g.x, snap);
-    g.y = this.snapAxis(g.y, snap);
+    // Speeds must be divisors of CELL=20: 1, 2, 4
+    const step = g.eaten ? 4 : g.frightened ? 2 : g.speed;
 
     if (!this.onGrid(g.x, g.y)) {
       g.x += g.dir.x * step;
@@ -387,8 +367,8 @@ class PacManGame {
       return;
     }
 
-    const col = Math.round(g.x / CELL);
-    const row = Math.round(g.y / CELL);
+    const col = g.x / CELL;
+    const row = g.y / CELL;
 
     // If eaten and reached home, revive
     if (g.eaten && col === Math.round(g.homeX) && row === Math.round(g.homeY)) {
@@ -527,8 +507,9 @@ class PacManGame {
     this.initGhostRelease();
     this.frightenTimer = 0;
     this.ghostEatMultiplier = 1;
-    this.running = true;
-    this.lastTime = performance.now();
+    this.running     = true;
+    this.lastTime    = performance.now();
+    this.accumulator = 0;
     requestAnimationFrame(ts => this.loop(ts));
   }
 
@@ -564,9 +545,10 @@ class PacManGame {
 
   // ── MAIN LOOP ────────────────────────────────────────────────────────────
   start() {
-    this.running  = true;
-    this.lastTime = performance.now();
-    this.animFrame = requestAnimationFrame(ts => this.loop(ts));
+    this.running     = true;
+    this.lastTime    = performance.now();
+    this.accumulator = 0;
+    this.animFrame   = requestAnimationFrame(ts => this.loop(ts));
     this.updateHUD();
   }
 
@@ -574,8 +556,9 @@ class PacManGame {
     if (this.gameOver || this.won) return;
     this.paused = !this.paused;
     if (!this.paused) {
-      this.lastTime = performance.now();
-      this.animFrame = requestAnimationFrame(ts => this.loop(ts));
+      this.lastTime    = performance.now();
+      this.accumulator = 0;
+      this.animFrame   = requestAnimationFrame(ts => this.loop(ts));
     }
     const overlay = document.getElementById('game-overlay');
     if (this.paused) {
@@ -607,10 +590,18 @@ class PacManGame {
 
   loop(timestamp) {
     if (!this.running || this.paused) return;
-    const dt = Math.min(timestamp - this.lastTime, 50);
-    this.lastTime = timestamp;
 
-    this.update(dt);
+    const TICK = 1000 / 60; // fixed 16.67ms tick for movement
+    const raw  = Math.min(timestamp - this.lastTime, 100);
+    this.lastTime     = timestamp;
+    this.accumulator += raw;
+
+    // Run as many fixed ticks as have elapsed (keeps movement speed constant at any framerate)
+    while (this.accumulator >= TICK) {
+      this.update(TICK);
+      this.accumulator -= TICK;
+    }
+
     this.draw();
 
     if (this.running && !this.paused)
@@ -619,8 +610,8 @@ class PacManGame {
 
   update(dt) {
     this.updateGhostModes(dt);
-    this.movePacman(dt);
-    this.ghosts.forEach(g => this.moveGhost(g, dt));
+    this.movePacman();
+    this.ghosts.forEach(g => this.moveGhost(g));
     this.checkGhostCollision();
     this.updateFloatingScores(dt);
   }
