@@ -176,13 +176,13 @@ class PacManGame {
     const spd = 1.8 + (level - 1) * 0.3;
     return [
       // Blinky – starts outside, chases directly
-      { x: 14*CELL, y: 11*CELL, dir:{x:0,y:-1}, color: GHOST_COLORS[0], name: GHOST_NAMES[0], mode:'scatter', modeTimer:7000, scatterTarget:{x:25,y:0}, homeX:13, homeY:11, inHouse:false, speed:spd, frightened:false, eaten:false, releaseDelay:0 },
+      { x: 14*CELL, y: 11*CELL, dir:{x:0,y:-1}, color: GHOST_COLORS[0], name: GHOST_NAMES[0], mode:'scatter', modeTimer:7000, scatterTarget:{col:25,row:0}, homeX:13, homeY:11, inHouse:false, speed:spd, frightened:false, eaten:false, releaseDelay:0 },
       // Pinky – starts in house
-      { x: 14*CELL, y: 13*CELL, dir:{x:0,y:-1}, color: GHOST_COLORS[1], name: GHOST_NAMES[1], mode:'scatter', modeTimer:7000, scatterTarget:{x:2,y:0},  homeX:11, homeY:13, inHouse:true,  speed:spd, frightened:false, eaten:false, releaseDelay:3000 },
+      { x: 14*CELL, y: 13*CELL, dir:{x:0,y:-1}, color: GHOST_COLORS[1], name: GHOST_NAMES[1], mode:'scatter', modeTimer:7000, scatterTarget:{col:2,row:0},  homeX:11, homeY:13, inHouse:true,  speed:spd, frightened:false, eaten:false, releaseDelay:3000 },
       // Inky – starts in house
-      { x: 13*CELL, y: 13*CELL, dir:{x:0,y: 1}, color: GHOST_COLORS[2], name: GHOST_NAMES[2], mode:'scatter', modeTimer:7000, scatterTarget:{x:27,y:30}, homeX:13, homeY:13, inHouse:true,  speed:spd, frightened:false, eaten:false, releaseDelay:6000 },
+      { x: 13*CELL, y: 13*CELL, dir:{x:0,y: 1}, color: GHOST_COLORS[2], name: GHOST_NAMES[2], mode:'scatter', modeTimer:7000, scatterTarget:{col:27,row:30}, homeX:13, homeY:13, inHouse:true,  speed:spd, frightened:false, eaten:false, releaseDelay:6000 },
       // Clyde – starts in house
-      { x: 15*CELL, y: 13*CELL, dir:{x:0,y: 1}, color: GHOST_COLORS[3], name: GHOST_NAMES[3], mode:'scatter', modeTimer:7000, scatterTarget:{x:0,y:30},  homeX:15, homeY:13, inHouse:true,  speed:spd, frightened:false, eaten:false, releaseDelay:9000 },
+      { x: 15*CELL, y: 13*CELL, dir:{x:0,y: 1}, color: GHOST_COLORS[3], name: GHOST_NAMES[3], mode:'scatter', modeTimer:7000, scatterTarget:{col:0,row:30},  homeX:15, homeY:13, inHouse:true,  speed:spd, frightened:false, eaten:false, releaseDelay:9000 },
     ];
   }
 
@@ -220,6 +220,14 @@ class PacManGame {
   destroy() {
     window.removeEventListener('keydown', this._keyHandler);
     if (this.animFrame) cancelAnimationFrame(this.animFrame);
+    if (this.deathTimeout) {
+      clearTimeout(this.deathTimeout);
+      this.deathTimeout = null;
+    }
+    if (this.winTimeout) {
+      clearTimeout(this.winTimeout);
+      this.winTimeout = null;
+    }
   }
 
   // ── tile helpers ─────────────────────────────────────────────────────────
@@ -498,7 +506,9 @@ class PacManGame {
     this.lives--;
     this.updateHUD();
 
-    setTimeout(() => {
+    if (this.deathTimeout) clearTimeout(this.deathTimeout);
+    this.deathTimeout = setTimeout(() => {
+      this.deathTimeout = null;
       if (this.lives <= 0) {
         this.triggerGameOver();
       } else {
@@ -538,7 +548,11 @@ class PacManGame {
     addScore(this.playerName, this.score);
     renderLeaderboard(this.playerName);
     updateHighScore();
-    setTimeout(() => showOverlay('win', this.score, this.level), 800);
+    if (this.winTimeout) clearTimeout(this.winTimeout);
+    this.winTimeout = setTimeout(() => {
+      this.winTimeout = null;
+      showOverlay('win', this.score, this.level);
+    }, 800);
   }
 
   // ── HUD ──────────────────────────────────────────────────────────────────
@@ -577,7 +591,16 @@ class PacManGame {
 
   restartGame() {
     if (this.animFrame) cancelAnimationFrame(this.animFrame);
+    if (this.deathTimeout) {
+      clearTimeout(this.deathTimeout);
+      this.deathTimeout = null;
+    }
+    if (this.winTimeout) {
+      clearTimeout(this.winTimeout);
+      this.winTimeout = null;
+    }
     hideOverlay();
+    this.paused = false;
     this.reset(1);
     this.start();
   }
@@ -871,14 +894,12 @@ function nextLevel() {
   const lvl = game.level + 1;
   const name = game.playerName;
   const score = game.score;
+  const lives = game.lives;
   game.destroy();
   game = new PacManGame(document.getElementById('game-canvas'), name);
-  game.level = lvl;
+  game.reset(lvl);
   game.score = score;
-  game.map   = game.buildMap();
-  game.dotsLeft = game.countDots(game.map);
-  game.ghosts = game._buildGhosts(lvl);
-  game.initGhostRelease();
+  game.lives = lives;
   game.start();
   game.updateHUD();
 }
