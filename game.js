@@ -152,12 +152,12 @@ class PacManGame {
     this.totalDots = this.countDots(this.map);
     this.dotsLeft  = this.totalDots;
 
-    // Speed must be a divisor of CELL=20 so positions stay on exact grid multiples
-    const spd = level >= 4 ? 4 : 2;
     this.pacman = {
-      x: 13 * CELL, y: 23 * CELL,
+      // Row 26 col 13 is a true 4-way junction — all 4 arrow keys work immediately
+      x: 13 * CELL, y: 26 * CELL,
       dir: { x: 0, y: 0 }, nextDir: { x: 0, y: 0 },
-      speed: spd,
+      // Speed 4 = divisor of CELL(20), halves max junction-wait vs speed 2
+      speed: 4,
       mouthAngle: 0.25, mouthDir: 1,
       dead: false, deathFrame: 0,
     };
@@ -257,9 +257,10 @@ class PacManGame {
   canMoveTo(px, py, dir) {
     const col = (px / CELL) + dir.x;
     const row = (py / CELL) + dir.y;
-    if (row < 0 || row >= ROWS) return true;
-    const c = ((col % COLS) + COLS) % COLS;
-    const tile = this.map[row]?.[c];
+    // Hard borders — no tunnels, edges are solid walls
+    if (col < 0 || col >= COLS) return false;
+    if (row < 0 || row >= ROWS) return false;
+    const tile = this.map[row]?.[col];
     return tile !== T.WALL && tile !== undefined;
   }
 
@@ -287,10 +288,6 @@ class PacManGame {
 
     p.x += p.dir.x * step;
     p.y += p.dir.y * step;
-
-    // tunnel wrap
-    if (p.x < 0)            p.x = (COLS - 1) * CELL;
-    if (p.x >= COLS * CELL) p.x = 0;
 
     // eat dot
     const tile = this.tileAt(p.x + CELL / 2, p.y + CELL / 2);
@@ -362,8 +359,6 @@ class PacManGame {
     if (!this.onGrid(g.x, g.y)) {
       g.x += g.dir.x * step;
       g.y += g.dir.y * step;
-      if (g.x < 0)            g.x = (COLS - 1) * CELL;
-      if (g.x >= COLS * CELL) g.x = 0;
       return;
     }
 
@@ -413,8 +408,6 @@ class PacManGame {
 
     g.x += g.dir.x * step;
     g.y += g.dir.y * step;
-    if (g.x < 0)            g.x = (COLS - 1) * CELL;
-    if (g.x >= COLS * CELL) g.x = 0;
   }
 
   updateGhostModes(dt) {
@@ -499,7 +492,7 @@ class PacManGame {
 
   respawn() {
     this.pacman.x   = 13 * CELL;
-    this.pacman.y   = 23 * CELL;
+    this.pacman.y   = 26 * CELL;
     this.pacman.dir = { x: 0, y: 0 };
     this.pacman.nextDir = { x: 0, y: 0 };
     this.pacman.dead = false;
