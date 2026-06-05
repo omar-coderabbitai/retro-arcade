@@ -36,11 +36,46 @@ reviews:
   poem: true
   enable_prompt_for_ai_agents: true
   path_filters: []
-  path_instructions: []
+  path_instructions:
+    - path: "game.js"
+      instructions: |
+        This file implements a browser-based Pac-Man clone using a fixed-timestep game loop (16.67 ms ticks at 60 fps) and a 28×31 tile grid where CELL=20 px.
+
+        When reviewing changes to the game loop (`loop`):
+        - Verify that `lastTime` is initialised correctly on the first frame to avoid a large initial delta that skips ticks (the `|| timestamp` guard is intentional).
+        - Confirm the accumulator drains in fixed `TICK = 1000/60` increments so movement speed is framerate-independent (60/120/144 Hz).
+        - Flag any change that passes `dt` directly to physics/movement instead of routing it through the fixed-tick drain.
+
+        When reviewing changes to `movePacman`:
+        - All pixel positions must remain integer multiples of `p.speed` (which must itself divide CELL=20 evenly) so that `onGrid` (`x % CELL === 0 && y % CELL === 0`) stays exact. Flag any floating-point arithmetic on `p.x` / `p.y`.
+        - Cornering snaps: when turning perpendicular and within `step` pixels of the nearest grid line, coordinates are snapped via `Math.round(p.x / CELL) * CELL`. Verify the snap is applied before `canMoveTo` so the passability check uses the snapped cell.
+        - Reversal (180°): must be allowed anywhere (not just at intersections) to feel immediate. Confirm no wall check is applied before reversing.
+        - After all direction changes, the blocked-at-intersection guard (`onGrid && !canMoveTo`) must still prevent moving into walls.
+
+        When reviewing `canMoveTo` / `onGrid` / collision helpers:
+        - `onGrid` must use strict equality (`=== 0`) on the modulus, never a tolerance, to keep grid alignment exact.
+        - `canMoveTo` must handle the tunnel row (tile type TUNNEL / `T.TUNNEL`) and wrap x-coordinates correctly.
+
+        General:
+        - Avoid introducing `requestAnimationFrame` callbacks that do physics work outside the accumulator loop.
+        - Constants `CELL`, `COLS`, `ROWS`, `W`, `H` are intentionally module-level; do not suggest moving them.
+        - Ghost AI, scatter/chase timers, and frightened state are tightly coupled — changes there should be reviewed for off-by-one errors in the mode-timer logic.
+    - path: "index.html"
+      instructions: |
+        This is the single-page host for the Pac-Man canvas game.
+        - Confirm the `<canvas>` element has explicit `width` and `height` attributes matching `W=560` and `H=620` (28×20 and 31×20).
+        - Script load order matters: `game.js` must be loaded before any inline script that calls `new PacManGame()`.
+        - Avoid adding external CDN dependencies; the game is intentionally self-contained.
+    - path: "style.css"
+      instructions: |
+        Styles support the Pac-Man game UI (canvas centering, overlay screens, leaderboard).
+        - Verify that canvas centering does not alter the effective pixel dimensions — only positioning should change.
+        - Overlay elements (start screen, game-over screen, pause screen) should use `pointer-events: none` when hidden to avoid blocking canvas input.
+        - Do not add CSS transitions or animations that could interfere with canvas rendering performance.
   abort_on_close: true
   disable_cache: false
 
-  slop_detection:
+
     enabled: true
     label: "slop"
 
