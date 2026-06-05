@@ -269,21 +269,36 @@ class PacManGame {
   }
 
   // ── pacman movement ──────────────────────────────────────────────────────
-  // Called once per fixed 60fps tick — no dt needed
   movePacman() {
     const p    = this.pacman;
-    const step = p.speed; // always a divisor of CELL=20, so % CELL stays exact
+    const step = p.speed;
+    const nd   = p.nextDir;
+    const hasNext = nd.x !== 0 || nd.y !== 0;
 
-    // At an intersection: try the queued turn, then keep current direction
-    if (this.onGrid(p.x, p.y)) {
-      if ((p.nextDir.x !== 0 || p.nextDir.y !== 0) && this.canMoveTo(p.x, p.y, p.nextDir)) {
-        p.dir = { ...p.nextDir };
+    // 1. Immediate reversal — apply anywhere without waiting for a junction
+    if (hasNext && nd.x === -p.dir.x && nd.y === -p.dir.y) {
+      p.dir = { ...nd };
+
+    // 2. Exact grid intersection — apply queued turn if passable
+    } else if (hasNext && this.onGrid(p.x, p.y)) {
+      if (this.canMoveTo(p.x, p.y, nd)) p.dir = { ...nd };
+
+    // 3. Cornering — within one step of a perpendicular grid line, snap and turn
+    } else if (hasNext) {
+      const sx = Math.round(p.x / CELL) * CELL;
+      const sy = Math.round(p.y / CELL) * CELL;
+      // Turning perpendicular: only the axis NOT being travelled needs snapping
+      const cornerX = p.dir.x !== 0 && nd.y !== 0 && Math.abs(p.x - sx) <= step;
+      const cornerY = p.dir.y !== 0 && nd.x !== 0 && Math.abs(p.y - sy) <= step;
+      if ((cornerX || cornerY) && this.canMoveTo(sx, sy, nd)) {
+        p.x = sx; p.y = sy;
+        p.dir = { ...nd };
       }
     }
 
     if (p.dir.x === 0 && p.dir.y === 0) return;
 
-    // Blocked by wall at current cell — stop
+    // Blocked at grid intersection — stop
     if (this.onGrid(p.x, p.y) && !this.canMoveTo(p.x, p.y, p.dir)) return;
 
     p.x += p.dir.x * step;
@@ -584,12 +599,13 @@ class PacManGame {
   loop(timestamp) {
     if (!this.running || this.paused) return;
 
-    const TICK = 1000 / 60; // fixed 16.67ms tick for movement
-    const raw  = Math.min(timestamp - this.lastTime, 100);
-    this.lastTime     = timestamp;
-    this.accumulator += raw;
+    const dt = Math.min(timestamp - (this.lastTime || timestamp), 50);
+    this.lastTime = timestamp;
 
-    // Run as many fixed ticks as have elapsed (keeps movement speed constant at any framerate)
+    // Accumulate time and drain in fixed 16.67ms ticks so speed stays
+    // constant across 60/120/144Hz displays
+    this.accumulator += dt;
+    const TICK = 1000 / 60;
     while (this.accumulator >= TICK) {
       this.update(TICK);
       this.accumulator -= TICK;
