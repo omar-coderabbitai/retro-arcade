@@ -100,7 +100,11 @@ reviews:
       mode: "warning"
     issue_assessment:
       mode: "warning"
-    custom_checks: []
+    custom_checks:
+      - mode: "error"
+        name: "Critical Issue Threshold"
+        instructions: |
+          Count the number of unresolved issues in this review that CodeRabbit has marked with a Critical severity. If the count is 5 or more, block the PR from merging.
 
   tools:
     ast-grep:

@@ -69,13 +69,14 @@ function saveLeaderboard(entries) {
   localStorage.setItem(LB_KEY, JSON.stringify(entries));
 }
 
-function addScore(name, score) {
+function addScore(name, score, flag) {
   const entries = loadLeaderboard();
   const existing = entries.find(e => e.name === name);
   if (existing) {
     if (score > existing.score) existing.score = score;
+    if (flag) existing.flag = flag;
   } else {
-    entries.push({ name, score });
+    entries.push({ name, score, flag: flag || '' });
   }
   entries.sort((a, b) => b.score - a.score);
   const top = entries.slice(0, 10);
@@ -90,7 +91,7 @@ function renderLeaderboard(currentPlayer) {
 
   tbody.innerHTML = '';
   if (entries.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="3" style="text-align:center;opacity:.5;padding:12px">No scores yet</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;opacity:.5;padding:12px">No scores yet</td></tr>';
     return;
   }
 
@@ -104,6 +105,7 @@ function renderLeaderboard(currentPlayer) {
       <td class="rank-num"><span class="rank-badge">${rankLabel}</span></td>
       <td>${escHtml(e.name)}</td>
       <td class="score-td">${e.score.toLocaleString()}</td>
+      <td class="flag-td">${e.flag || ''}</td>
     `;
     tbody.appendChild(tr);
   });
@@ -144,7 +146,7 @@ class PacManGame {
   }
 
   // ── reset ────────────────────────────────────────────────────────────────
-  reset(level) {
+  reset(level, preservedSessionMs) {
     this.level    = level || 1;
     this.score    = 0;
     this.lives    = 3;
@@ -169,9 +171,10 @@ class PacManGame {
     this.ghosts = this._buildGhosts(level);
     this.initGhostRelease();
 
-    this.animFrame = null;
-    this.gameOver  = false;
-    this.won       = false;
+    this.animFrame    = null;
+    this.gameOver     = false;
+    this.won          = false;
+    this.sessionMs    = preservedSessionMs !== undefined ? preservedSessionMs : 0; // total elapsed ms for this session
   }
 
   _buildGhosts(level) {
@@ -523,7 +526,7 @@ class PacManGame {
 
   triggerGameOver() {
     this.gameOver = true;
-    addScore(this.playerName, this.score);
+    addScore(this.playerName, this.score, playerFlag);
     renderLeaderboard(this.playerName);
     updateHighScore();
     showOverlay('gameover', this.score, this.level);
@@ -534,7 +537,7 @@ class PacManGame {
     this.running = false;
     this.score += 1000 * this.level;
     this.updateHUD();
-    addScore(this.playerName, this.score);
+    addScore(this.playerName, this.score, playerFlag);
     renderLeaderboard(this.playerName);
     updateHighScore();
     if (this.winTimeout) clearTimeout(this.winTimeout);
@@ -618,11 +621,21 @@ class PacManGame {
   }
 
   update(dt) {
+    this.sessionMs += dt;
+    this.updateTimerDisplay();
     this.updateGhostModes(dt);
     this.movePacman();
     this.ghosts.forEach(g => this.moveGhost(g));
     this.checkGhostCollision();
     this.updateFloatingScores(dt);
+  }
+
+  updateTimerDisplay() {
+    const totalSec = Math.floor(this.sessionMs / 1000);
+    const mm = String(Math.floor(totalSec / 60)).padStart(2, '0');
+    const ss = String(totalSec % 60).padStart(2, '0');
+    const el = document.getElementById('timer-display');
+    if (el) el.textContent = `${mm}:${ss}`;
   }
 
   // ── DRAW ─────────────────────────────────────────────────────────────────
@@ -895,9 +908,10 @@ function nextLevel() {
   const name = game.playerName;
   const score = game.score;
   const lives = game.lives;
+  const sessionMs = game.sessionMs;
   game.destroy();
   game = new PacManGame(document.getElementById('game-canvas'), name);
-  game.reset(lvl);
+  game.reset(lvl, sessionMs);
   game.score = score;
   game.lives = lives;
   game.start();
@@ -910,15 +924,23 @@ function newSession() {
   document.getElementById('app').classList.add('hidden');
   document.getElementById('username-modal').style.display = 'flex';
   document.getElementById('username-input').value = '';
+  document.getElementById('country-select').value = '';
 }
 
 // ─── BOOT ─────────────────────────────────────────────────────────────────────
-let game = null;
+let game     = null;
+let playerFlag = '';
 
-function startSession(name) {
+function startSession(name, flag) {
+  playerFlag = flag || '';
   document.getElementById('username-modal').style.display = 'none';
   document.getElementById('app').classList.remove('hidden');
-  document.getElementById('current-player').textContent = name.toUpperCase();
+
+  const playerCard = document.getElementById('current-player');
+  playerCard.textContent = name.toUpperCase();
+
+  const avatarEl = document.querySelector('.player-avatar');
+  avatarEl.textContent = playerFlag || '👾';
 
   updateHighScore();
   renderLeaderboard(name);
@@ -938,7 +960,8 @@ document.getElementById('username-submit').addEventListener('click', () => {
     setTimeout(() => document.getElementById('username-input').style.borderColor = '', 800);
     return;
   }
-  startSession(name);
+  const flag = document.getElementById('country-select').value;
+  startSession(name, flag);
 });
 
 document.getElementById('username-input').addEventListener('keydown', e => {
