@@ -146,7 +146,7 @@ class PacManGame {
   }
 
   // ── reset ────────────────────────────────────────────────────────────────
-  reset(level) {
+  reset(level, preservedSessionMs) {
     this.level    = level || 1;
     this.score    = 0;
     this.lives    = 3;
@@ -174,7 +174,7 @@ class PacManGame {
     this.animFrame    = null;
     this.gameOver     = false;
     this.won          = false;
-    this.sessionMs    = 0; // total elapsed ms for this session
+    this.sessionMs    = preservedSessionMs !== undefined ? preservedSessionMs : 0; // total elapsed ms for this session
   }
 
   _buildGhosts(level) {
@@ -908,9 +908,10 @@ function nextLevel() {
   const name = game.playerName;
   const score = game.score;
   const lives = game.lives;
+  const sessionMs = game.sessionMs;
   game.destroy();
   game = new PacManGame(document.getElementById('game-canvas'), name);
-  game.reset(lvl);
+  game.reset(lvl, sessionMs);
   game.score = score;
   game.lives = lives;
   game.start();

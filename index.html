@@ -14,7 +14,7 @@
       <p class="modal-sub">Enter your name to play</p>
       <input id="username-input" type="text" maxlength="12" placeholder="YOUR NAME" autocomplete="off" />
       <div class="country-select-wrapper">
-        <select id="country-select">
+        <select id="country-select" aria-label="Country (optional)">
           <option value="">🌍 Select Country (optional)</option>
           <option value="🇦🇺">🇦🇺 Australia</option>
           <option value="🇧🇷">🇧🇷 Brazil</option>
@@ -100,7 +100,7 @@
           <h2 class="panel-title">🏆 LEADERBOARD</h2>
           <table class="leaderboard-table">
             <thead>
-              <tr><th>#</th><th>NAME</th><th>SCORE</th><th></th></tr>
+              <tr><th scope="col">#</th><th scope="col">NAME</th><th scope="col">SCORE</th><th scope="col">FLAG</th></tr>
             </thead>
             <tbody id="leaderboard-body"></tbody>
           </table>
