@@ -69,13 +69,14 @@ function saveLeaderboard(entries) {
   localStorage.setItem(LB_KEY, JSON.stringify(entries));
 }
 
-function addScore(name, score) {
+function addScore(name, score, flag) {
   const entries = loadLeaderboard();
   const existing = entries.find(e => e.name === name);
   if (existing) {
     if (score > existing.score) existing.score = score;
+    if (flag) existing.flag = flag;
   } else {
-    entries.push({ name, score });
+    entries.push({ name, score, flag: flag || '' });
   }
   entries.sort((a, b) => b.score - a.score);
   const top = entries.slice(0, 10);
@@ -90,7 +91,7 @@ function renderLeaderboard(currentPlayer) {
 
   tbody.innerHTML = '';
   if (entries.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="3" style="text-align:center;opacity:.5;padding:12px">No scores yet</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;opacity:.5;padding:12px">No scores yet</td></tr>';
     return;
   }
 
@@ -104,6 +105,7 @@ function renderLeaderboard(currentPlayer) {
       <td class="rank-num"><span class="rank-badge">${rankLabel}</span></td>
       <td>${escHtml(e.name)}</td>
       <td class="score-td">${e.score.toLocaleString()}</td>
+      <td class="flag-td">${e.flag || ''}</td>
     `;
     tbody.appendChild(tr);
   });
@@ -203,20 +205,52 @@ class PacManGame {
       w:'ArrowUp', s:'ArrowDown', a:'ArrowLeft', d:'ArrowRight',
       W:'ArrowUp', S:'ArrowDown', A:'ArrowLeft', D:'ArrowRight',
     };
+    const dirs = {
+      ArrowUp:{x:0,y:-1}, ArrowDown:{x:0,y:1},
+      ArrowLeft:{x:-1,y:0}, ArrowRight:{x:1,y:0}
+    };
     this._keyHandler = (e) => {
       const mapped = keyMap[e.key];
       if (mapped) {
         e.preventDefault();
-        const dirs = {
-          ArrowUp:{x:0,y:-1}, ArrowDown:{x:0,y:1},
-          ArrowLeft:{x:-1,y:0}, ArrowRight:{x:1,y:0}
-        };
         this.pacman.nextDir = dirs[mapped];
+        // Try to apply immediately in the key event — eliminates tick pipeline delay
+        if (this.running && !this.paused && !this.pacman.dead) this._applyTurn();
       }
       if (e.key === 'p' || e.key === 'P') this.togglePause();
       if (e.key === 'r' || e.key === 'R') this.restartGame();
     };
     window.addEventListener('keydown', this._keyHandler);
+  }
+
+  // Shared turn logic used by both key handler and movePacman
+  _applyTurn() {
+    const p  = this.pacman;
+    const nd = p.nextDir;
+    if (nd.x === 0 && nd.y === 0) return;
+
+    // Immediate reversal — no intersection needed
+    if (nd.x === -p.dir.x && nd.y === -p.dir.y) {
+      p.dir = { ...nd };
+      return;
+    }
+
+    // On exact grid — turn if passable
+    if (this.onGrid(p.x, p.y) && this.canMoveTo(p.x, p.y, nd)) {
+      p.dir = { ...nd };
+      return;
+    }
+
+    // Cornering — snap to nearest grid line if within CELL/2 on the perpendicular axis
+    const TOLERANCE = Math.floor(CELL / 2); // 10px — covers every position in a cell
+    const sx = Math.round(p.x / CELL) * CELL;
+    const sy = Math.round(p.y / CELL) * CELL;
+    const cornerX = p.dir.x !== 0 && nd.y !== 0 && Math.abs(p.x - sx) <= TOLERANCE;
+    const cornerY = p.dir.y !== 0 && nd.x !== 0 && Math.abs(p.y - sy) <= TOLERANCE;
+    if ((cornerX || cornerY) && this.canMoveTo(sx, sy, nd)) {
+      p.x = sx; p.y = sy;
+      p.dir = { ...nd };
+    }
   }
 
   destroy() {
@@ -270,39 +304,18 @@ class PacManGame {
 
   // ── pacman movement ──────────────────────────────────────────────────────
   movePacman() {
-    const p    = this.pacman;
-    const step = p.speed;
-    const nd   = p.nextDir;
-    const hasNext = nd.x !== 0 || nd.y !== 0;
+    const p = this.pacman;
 
-    // 1. Immediate reversal — apply anywhere without waiting for a junction
-    if (hasNext && nd.x === -p.dir.x && nd.y === -p.dir.y) {
-      p.dir = { ...nd };
-
-    // 2. Exact grid intersection — apply queued turn if passable
-    } else if (hasNext && this.onGrid(p.x, p.y)) {
-      if (this.canMoveTo(p.x, p.y, nd)) p.dir = { ...nd };
-
-    // 3. Cornering — within one step of a perpendicular grid line, snap and turn
-    } else if (hasNext) {
-      const sx = Math.round(p.x / CELL) * CELL;
-      const sy = Math.round(p.y / CELL) * CELL;
-      // Turning perpendicular: only the axis NOT being travelled needs snapping
-      const cornerX = p.dir.x !== 0 && nd.y !== 0 && Math.abs(p.x - sx) <= step;
-      const cornerY = p.dir.y !== 0 && nd.x !== 0 && Math.abs(p.y - sy) <= step;
-      if ((cornerX || cornerY) && this.canMoveTo(sx, sy, nd)) {
-        p.x = sx; p.y = sy;
-        p.dir = { ...nd };
-      }
-    }
+    // Re-attempt queued turn every tick (catches cases missed between key press and tick)
+    this._applyTurn();
 
     if (p.dir.x === 0 && p.dir.y === 0) return;
 
     // Blocked at grid intersection — stop
     if (this.onGrid(p.x, p.y) && !this.canMoveTo(p.x, p.y, p.dir)) return;
 
-    p.x += p.dir.x * step;
-    p.y += p.dir.y * step;
+    p.x += p.dir.x * p.speed;
+    p.y += p.dir.y * p.speed;
 
     // eat dot
     const tile = this.tileAt(p.x + CELL / 2, p.y + CELL / 2);
@@ -523,7 +536,7 @@ class PacManGame {
 
   triggerGameOver() {
     this.gameOver = true;
-    addScore(this.playerName, this.score);
+    addScore(this.playerName, this.score, playerFlag);
     renderLeaderboard(this.playerName);
     updateHighScore();
     showOverlay('gameover', this.score, this.level);
@@ -534,7 +547,7 @@ class PacManGame {
     this.running = false;
     this.score += 1000 * this.level;
     this.updateHUD();
-    addScore(this.playerName, this.score);
+    addScore(this.playerName, this.score, playerFlag);
     renderLeaderboard(this.playerName);
     updateHighScore();
     if (this.winTimeout) clearTimeout(this.winTimeout);
@@ -913,12 +926,15 @@ function newSession() {
 }
 
 // ─── BOOT ─────────────────────────────────────────────────────────────────────
-let game = null;
+let game       = null;
+let playerFlag = '';
 
-function startSession(name) {
+function startSession(name, flag) {
+  playerFlag = flag || '';
   document.getElementById('username-modal').style.display = 'none';
   document.getElementById('app').classList.remove('hidden');
   document.getElementById('current-player').textContent = name.toUpperCase();
+  document.querySelector('.player-avatar').textContent = playerFlag || '👾';
 
   updateHighScore();
   renderLeaderboard(name);
@@ -927,6 +943,15 @@ function startSession(name) {
   if (game) game.destroy();
   game = new PacManGame(canvas, name);
   game.start();
+}
+
+function newSession() {
+  if (game) game.destroy();
+  game = null;
+  document.getElementById('app').classList.add('hidden');
+  document.getElementById('username-modal').style.display = 'flex';
+  document.getElementById('username-input').value = '';
+  document.getElementById('country-select').value = '';
 }
 
 // Username form
@@ -938,7 +963,7 @@ document.getElementById('username-submit').addEventListener('click', () => {
     setTimeout(() => document.getElementById('username-input').style.borderColor = '', 800);
     return;
   }
-  startSession(name);
+  startSession(name, document.getElementById('country-select').value);
 });
 
 document.getElementById('username-input').addEventListener('keydown', e => {
